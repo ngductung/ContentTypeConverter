@@ -132,11 +132,27 @@ Nested values use bracket notation before URL encoding:
 user%5Bname%5D=alice
 ```
 
+### x-www-form-urlencoded to JSON / XML
+
+Bracket keys are expanded into nested values and repeated keys become arrays:
+
+```text
+user[name]=alice&tags[]=a&tags[]=b&id=1&id=2
+```
+
+```json
+{"user":{"name":"alice"},"tags":["a","b"],"id":["1","2"]}
+```
+
+Values are kept exactly as sent (no trimming), and malformed escapes such as a
+bare `%` are kept as-is instead of failing the conversion.
+
 ### POST to GET
 
 The `Convert POST to GET` action first normalizes the request body to
 `application/x-www-form-urlencoded`, then uses Burp's request method conversion
-helper to move body parameters into the URL query string.
+helper to move body parameters into the URL query string. `PUT`, `PATCH`,
+`DELETE` and other methods with a body are converted the same way.
 
 This preserves parameter names and values more reliably than manually editing
 the request line.
@@ -145,6 +161,15 @@ Notes
 -----
 
 - Only the first selected request is modified.
-- Cookies are not copied into form bodies.
-- `Content-Type` is replaced with the target format when a body conversion is
-  performed.
+- The menu is shown in editable request editors and the Intruder positions
+  editor.
+- Key order is preserved in every conversion.
+- The body format is detected from `Content-Type`; when the header is missing or
+  wrong, the body is sniffed as JSON, XML, then form data.
+- Cookies and URL query parameters are not copied into form bodies.
+- `Content-Type` is replaced (case-insensitively, so HTTP/2 headers work) with
+  the target format when a body conversion is performed.
+- If a conversion fails (for example a JSON key that is not a valid XML element
+  name) the request is left unchanged and the reason is shown in a dialog and in
+  the extension's error output.
+- XML is parsed with DTD external entities disabled.

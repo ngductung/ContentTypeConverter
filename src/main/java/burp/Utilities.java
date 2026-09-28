@@ -1,672 +1,208 @@
 package burp;
 
-import com.google.gson.Gson;
-import org.json.JSONArray;
-import org.json.JSONObject;
-import org.json.JSONTokener;
-import org.json.XML;
-import org.json.XMLParserConfiguration;
-import org.w3c.dom.*;
+import burp.BodyConverter.ConversionException;
+import burp.BodyConverter.Pair;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.transform.OutputKeys;
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamResult;
-import java.io.ByteArrayInputStream;
-import java.io.StringWriter;
-import java.io.UnsupportedEncodingException;
-import java.io.Writer;
-import java.net.URLDecoder;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
 
 public class Utilities {
 
-    public static byte[] convertToXML(IExtensionHelpers helpers, IHttpRequestResponse requestResponse) throws Exception {
+    private static final String CONTENT_TYPE_JSON = "application/json;charset=UTF-8";
+    private static final String CONTENT_TYPE_XML = "application/xml;charset=UTF-8";
+    private static final String CONTENT_TYPE_FORM = "application/x-www-form-urlencoded;charset=UTF-8";
 
-        byte[] request = requestResponse.getRequest();
+    private enum Format { JSON, XML, FORM, EMPTY }
 
-        if (Objects.equals(helpers.analyzeRequest(request).getMethod(), "GET")){
-            request = helpers.toggleRequestMethod(request);
+    private static final class ParsedBody {
+        final Format format;
+        final JsonElement model;
+        final List<Pair> pairs;
+
+        ParsedBody(Format format, JsonElement model, List<Pair> pairs) {
+            this.format = format;
+            this.model = model;
+            this.pairs = pairs;
         }
 
+        static ParsedBody form(List<Pair> pairs) {
+            return new ParsedBody(Format.FORM, BodyConverter.pairsToJson(pairs), pairs);
+        }
+    }
+
+    public static byte[] convertToXML(IExtensionHelpers helpers, byte[] request) throws ConversionException {
+        request = toPostIfGet(helpers, request);
         IRequestInfo requestInfo = helpers.analyzeRequest(request);
+        String body = getBody(request, requestInfo);
+        ParsedBody parsed = parseBody(requestInfo, body);
 
-        int bodyOffset = requestInfo.getBodyOffset();
+        String xml = parsed.format == Format.XML ? body : BodyConverter.toXml(parsed.model);
 
-        byte content_type = requestInfo.getContentType();
+        return buildRequest(helpers, requestInfo, CONTENT_TYPE_XML, xml);
+    }
 
-        String body = new String(request, bodyOffset, request.length - bodyOffset, "UTF-8");
+    public static byte[] convertToJSON(IExtensionHelpers helpers, byte[] request) throws ConversionException {
+        request = toPostIfGet(helpers, request);
+        IRequestInfo requestInfo = helpers.analyzeRequest(request);
+        String body = getBody(request, requestInfo);
+        ParsedBody parsed = parseBody(requestInfo, body);
 
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        Document doc = new Document() {
-            public String getNodeName() {
-                return null;
-            }
+        String json;
 
-            public String getNodeValue() throws DOMException {
-                return null;
-            }
-
-            public void setNodeValue(String nodeValue) throws DOMException {
-
-            }
-
-            public short getNodeType() {
-                return 0;
-            }
-
-            public Node getParentNode() {
-                return null;
-            }
-
-            public NodeList getChildNodes() {
-                return null;
-            }
-
-            public Node getFirstChild() {
-                return null;
-            }
-
-            public Node getLastChild() {
-                return null;
-            }
-
-            public Node getPreviousSibling() {
-                return null;
-            }
-
-            public Node getNextSibling() {
-                return null;
-            }
-
-            public NamedNodeMap getAttributes() {
-                return null;
-            }
-
-            public Document getOwnerDocument() {
-                return null;
-            }
-
-            public Node insertBefore(Node newChild, Node refChild) throws DOMException {
-                return null;
-            }
-
-            public Node replaceChild(Node newChild, Node oldChild) throws DOMException {
-                return null;
-            }
-
-            public Node removeChild(Node oldChild) throws DOMException {
-                return null;
-            }
-
-            public Node appendChild(Node newChild) throws DOMException {
-                return null;
-            }
-
-            public boolean hasChildNodes() {
-                return false;
-            }
-
-            public Node cloneNode(boolean deep) {
-                return null;
-            }
-
-            public void normalize() {
-
-            }
-
-            public boolean isSupported(String feature, String version) {
-                return false;
-            }
-
-            public String getNamespaceURI() {
-                return null;
-            }
-
-            public String getPrefix() {
-                return null;
-            }
-
-            public void setPrefix(String prefix) throws DOMException {
-
-            }
-
-            public String getLocalName() {
-                return null;
-            }
-
-            public boolean hasAttributes() {
-                return false;
-            }
-
-            public String getBaseURI() {
-                return null;
-            }
-
-            public short compareDocumentPosition(Node other) throws DOMException {
-                return 0;
-            }
-
-            public String getTextContent() throws DOMException {
-                return null;
-            }
-
-            public void setTextContent(String textContent) throws DOMException {
-
-            }
-
-            public boolean isSameNode(Node other) {
-                return false;
-            }
-
-            public String lookupPrefix(String namespaceURI) {
-                return null;
-            }
-
-            public boolean isDefaultNamespace(String namespaceURI) {
-                return false;
-            }
-
-            public String lookupNamespaceURI(String prefix) {
-                return null;
-            }
-
-            public boolean isEqualNode(Node arg) {
-                return false;
-            }
-
-            public Object getFeature(String feature, String version) {
-                return null;
-            }
-
-            public Object setUserData(String key, Object data, UserDataHandler handler) {
-                return null;
-            }
-
-            public Object getUserData(String key) {
-                return null;
-            }
-
-            public DocumentType getDoctype() {
-                return null;
-            }
-
-            public DOMImplementation getImplementation() {
-                return null;
-            }
-
-            public Element getDocumentElement() {
-                return null;
-            }
-
-            public Element createElement(String tagName) throws DOMException {
-                return null;
-            }
-
-            public DocumentFragment createDocumentFragment() {
-                return null;
-            }
-
-            public Text createTextNode(String data) {
-                return null;
-            }
-
-            public Comment createComment(String data) {
-                return null;
-            }
-
-            public CDATASection createCDATASection(String data) throws DOMException {
-                return null;
-            }
-
-            public ProcessingInstruction createProcessingInstruction(String target, String data) throws DOMException {
-                return null;
-            }
-
-            public Attr createAttribute(String name) throws DOMException {
-                return null;
-            }
-
-            public EntityReference createEntityReference(String name) throws DOMException {
-                return null;
-            }
-
-            public NodeList getElementsByTagName(String tagname) {
-                return null;
-            }
-
-            public Node importNode(Node importedNode, boolean deep) throws DOMException {
-                return null;
-            }
-
-            public Element createElementNS(String namespaceURI, String qualifiedName) throws DOMException {
-                return null;
-            }
-
-            public Attr createAttributeNS(String namespaceURI, String qualifiedName) throws DOMException {
-                return null;
-            }
-
-            public NodeList getElementsByTagNameNS(String namespaceURI, String localName) {
-                return null;
-            }
-
-            public Element getElementById(String elementId) {
-                return null;
-            }
-
-            public String getInputEncoding() {
-                return null;
-            }
-
-            public String getXmlEncoding() {
-                return null;
-            }
-
-            public boolean getXmlStandalone() {
-                return false;
-            }
-
-            public void setXmlStandalone(boolean xmlStandalone) throws DOMException {
-
-            }
-
-            public String getXmlVersion() {
-                return null;
-            }
-
-            public void setXmlVersion(String xmlVersion) throws DOMException {
-
-            }
-
-            public boolean getStrictErrorChecking() {
-                return false;
-            }
-
-            public void setStrictErrorChecking(boolean strictErrorChecking) {
-
-            }
-
-            public String getDocumentURI() {
-                return null;
-            }
-
-            public void setDocumentURI(String documentURI) {
-
-            }
-
-            public Node adoptNode(Node source) throws DOMException {
-                return null;
-            }
-
-            public DOMConfiguration getDomConfig() {
-                return null;
-            }
-
-            public void normalizeDocument() {
-
-            }
-
-            public Node renameNode(Node n, String namespaceURI, String qualifiedName) throws DOMException {
-                return null;
-            }
-        };
-
-        StringBuilder xml = new StringBuilder();
-        xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\" ?>");
-        xml.append("<root>");
-
-        if (content_type == 0 || content_type == 1) {
-
-            Map<String,String> params = splitQuery(body);
-            Gson gson = new Gson();
-            body = gson.toJson(params);
+        if (parsed.format == Format.JSON) {
+            json = body;
+        } else {
+            json = BodyConverter.toJson(parsed.model, parsed.format == Format.XML);
         }
 
-        Boolean success = true;
+        return buildRequest(helpers, requestInfo, CONTENT_TYPE_JSON, json);
+    }
+
+    public static byte[] convertToUrlEncoded(IExtensionHelpers helpers, byte[] request) {
+        request = toPostIfGet(helpers, request);
+        IRequestInfo requestInfo = helpers.analyzeRequest(request);
+        String body = getBody(request, requestInfo);
+
+        List<Pair> pairs;
 
         try {
-            Object item = new JSONTokener(body).nextValue();
-            Object json = item;
-
-            xml.append(XML.toString(json));
-            xml.append("</root>");
-
-            DocumentBuilder builder = factory.newDocumentBuilder();
-
-            ByteArrayInputStream input =  new ByteArrayInputStream(
-                    xml.toString().getBytes("UTF-8"));
-            doc = builder.parse(input);
-
-        }catch (Exception e){
-            success = false;
-
+            ParsedBody parsed = parseBody(requestInfo, body);
+            pairs = parsed.format == Format.FORM ? parsed.pairs : BodyConverter.jsonToPairs(parsed.model);
+        } catch (ConversionException e) {
+            pairs = new ArrayList<>();
+            pairs.add(new Pair("value", body));
         }
 
-        if (!success) {
-            return null;
-        } else {
-
-            List<String> headers;
-
-            headers = helpers.analyzeRequest(request).getHeaders();
-
-            Iterator<String> iter = headers.iterator();
-            while(iter.hasNext()){
-                if(iter.next().contains("Content-Type"))
-                    iter.remove();
-            }
-
-            headers.add("Content-Type: application/xml;charset=UTF-8");
-
-            return helpers.buildHttpMessage(headers,prettyPrint(doc).getBytes());
-
-        }
-
+        return buildRequest(helpers, requestInfo, CONTENT_TYPE_FORM, BodyConverter.encodePairs(pairs));
     }
 
-    public static byte[] convertToJSON(IExtensionHelpers helpers, IHttpRequestResponse requestResponse) {
+    public static byte[] convertPostToGet(IExtensionHelpers helpers, byte[] request) throws ConversionException {
+        String method = helpers.analyzeRequest(request).getMethod();
 
-        byte[] request = requestResponse.getRequest();
-
-        if (Objects.equals(helpers.analyzeRequest(request).getMethod(), "GET")){
-            request = helpers.toggleRequestMethod(request);
+        if ("GET".equals(method)) {
+            throw new ConversionException("Request is already a GET request");
         }
 
-        IRequestInfo requestInfo = helpers.analyzeRequest(request);
+        byte[] formRequest = convertToUrlEncoded(helpers, request);
 
-        int bodyOffset = requestInfo.getBodyOffset();
-
-        byte content_type = requestInfo.getContentType();
-
-        String body = new String(request, bodyOffset, request.length - bodyOffset);
-
-        String json = "";
-
-        Boolean success = true;
-
-        try {
-            if (content_type == 3) {
-                JSONObject xmlJSONObject = XML.toJSONObject(body, XMLParserConfiguration.KEEP_STRINGS);
-                json = unwrapRootObject(xmlJSONObject).toString(2);
-            } else if (content_type == 0 || content_type == 1) {
-                Map<String,String> params = splitQuery(body);
-                Gson gson = new Gson();
-                json = gson.toJson(params);
-            } else {
-                json = body;
-            }
-        }catch (Exception e){
-            success = false;
-
-        }
-
-        if (!success) {
-            return request;
-        } else {
-
-            List<String> headers;
-
-            headers = helpers.analyzeRequest(request).getHeaders();
-
-            Iterator<String> iter = headers.iterator();
-            while(iter.hasNext()){
-                if(iter.next().contains("Content-Type"))
-                    iter.remove();
-            }
-
-            headers.add("Content-Type: application/json;charset=UTF-8");
-
-            return helpers.buildHttpMessage(headers, json.getBytes());
-
-        }
-
-
-    }
-
-    private static JSONObject unwrapRootObject(JSONObject xmlJSONObject) {
-        if (xmlJSONObject.length() == 1 && xmlJSONObject.has("root")) {
-            Object root = xmlJSONObject.opt("root");
-
-            if (root instanceof JSONObject) {
-                return (JSONObject) root;
-            }
-        }
-
-        return xmlJSONObject;
-    }
-
-    public static byte[] convertPostToGet(IExtensionHelpers helpers, IHttpRequestResponse requestResponse) {
-
-        byte[] request = requestResponse.getRequest();
-        IRequestInfo requestInfo = helpers.analyzeRequest(request);
-
-        if (!Objects.equals(requestInfo.getMethod(), "POST")) {
-            return request;
-        }
-
-        byte[] formRequest = convertToUrlEncoded(helpers, requestResponse);
-
-        if (formRequest == null) {
-            return request;
+        if (!"POST".equals(method)) {
+            formRequest = replaceMethod(helpers, formRequest, "POST");
         }
 
         return helpers.toggleRequestMethod(formRequest);
-
     }
 
-    public static byte[] convertToUrlEncoded(IExtensionHelpers helpers, IHttpRequestResponse requestResponse) {
-
-        byte[] request = requestResponse.getRequest();
-
-        if (Objects.equals(helpers.analyzeRequest(request).getMethod(), "GET")){
-            request = helpers.toggleRequestMethod(request);
+    private static ParsedBody parseBody(IRequestInfo requestInfo, String body) throws ConversionException {
+        if (body.trim().isEmpty()) {
+            return new ParsedBody(Format.EMPTY, new JsonObject(), new ArrayList<Pair>());
         }
 
+        ParsedBody declared = parseDeclaredType(requestInfo, body);
+
+        if (declared != null) {
+            return declared;
+        }
+
+        // Missing or wrong Content-Type: sniff the body instead.
+        JsonElement json = BodyConverter.tryParseJson(body);
+
+        if (json != null) {
+            return new ParsedBody(Format.JSON, json, null);
+        }
+
+        JsonElement xml = BodyConverter.tryParseXml(body);
+
+        if (xml != null) {
+            return new ParsedBody(Format.XML, xml, null);
+        }
+
+        if (BodyConverter.looksUrlEncoded(body)) {
+            return ParsedBody.form(BodyConverter.parseFormPairs(body));
+        }
+
+        throw new ConversionException("Unable to recognise the request body as JSON, XML or form data");
+    }
+
+    private static ParsedBody parseDeclaredType(IRequestInfo requestInfo, String body) {
+        switch (requestInfo.getContentType()) {
+            case IRequestInfo.CONTENT_TYPE_JSON: {
+                JsonElement json = BodyConverter.tryParseJson(body);
+                return json == null ? null : new ParsedBody(Format.JSON, json, null);
+            }
+            case IRequestInfo.CONTENT_TYPE_XML: {
+                JsonElement xml = BodyConverter.tryParseXml(body);
+                return xml == null ? null : new ParsedBody(Format.XML, xml, null);
+            }
+            case IRequestInfo.CONTENT_TYPE_URL_ENCODED:
+                return ParsedBody.form(BodyConverter.parseFormPairs(body));
+            case IRequestInfo.CONTENT_TYPE_MULTIPART:
+            case IRequestInfo.CONTENT_TYPE_AMF: {
+                List<Pair> pairs = getBodyParameterPairs(requestInfo);
+                return pairs.isEmpty() ? null : ParsedBody.form(pairs);
+            }
+            default:
+                return null;
+        }
+    }
+
+    /** Body parameters parsed by Burp; URL parameters stay in the request line and cookies are skipped. */
+    private static List<Pair> getBodyParameterPairs(IRequestInfo requestInfo) {
+        List<Pair> pairs = new ArrayList<>();
+
+        for (IParameter parameter : requestInfo.getParameters()) {
+            if (parameter.getType() == IParameter.PARAM_BODY) {
+                pairs.add(new Pair(parameter.getName(), parameter.getValue()));
+            }
+        }
+
+        return pairs;
+    }
+
+    private static byte[] toPostIfGet(IExtensionHelpers helpers, byte[] request) {
+        if ("GET".equals(helpers.analyzeRequest(request).getMethod())) {
+            return helpers.toggleRequestMethod(request);
+        }
+
+        return request;
+    }
+
+    private static byte[] replaceMethod(IExtensionHelpers helpers, byte[] request, String method) {
         IRequestInfo requestInfo = helpers.analyzeRequest(request);
+        List<String> headers = requestInfo.getHeaders();
+        String requestLine = headers.get(0);
+        int space = requestLine.indexOf(' ');
+        headers.set(0, method + (space >= 0 ? requestLine.substring(space) : ""));
 
         int bodyOffset = requestInfo.getBodyOffset();
+        byte[] body = new byte[request.length - bodyOffset];
+        System.arraycopy(request, bodyOffset, body, 0, body.length);
 
-        String body = new String(request, bodyOffset, request.length - bodyOffset, StandardCharsets.UTF_8);
+        return helpers.buildHttpMessage(headers, body);
+    }
 
-        String formBody;
+    private static String getBody(byte[] request, IRequestInfo requestInfo) {
+        int bodyOffset = requestInfo.getBodyOffset();
+        return new String(request, bodyOffset, request.length - bodyOffset, StandardCharsets.UTF_8);
+    }
 
-        try {
-            formBody = buildUrlEncodedBody(requestInfo, body);
-        } catch (Exception e) {
-            return request;
-        }
-
-        List<String> headers;
-
-        headers = requestInfo.getHeaders();
-
+    private static byte[] buildRequest(IExtensionHelpers helpers, IRequestInfo requestInfo, String contentType, String body) {
+        List<String> headers = requestInfo.getHeaders();
         Iterator<String> iter = headers.iterator();
-        while(iter.hasNext()){
-            if(iter.next().toLowerCase(Locale.ROOT).startsWith("content-type:"))
+        iter.next(); // request line
+
+        while (iter.hasNext()) {
+            if (iter.next().toLowerCase(Locale.ROOT).startsWith("content-type:")) {
                 iter.remove();
-        }
-
-        headers.add("Content-Type: application/x-www-form-urlencoded;charset=UTF-8");
-
-        return helpers.buildHttpMessage(headers, formBody.getBytes(StandardCharsets.UTF_8));
-
-    }
-
-    private static String buildUrlEncodedBody(IRequestInfo requestInfo, String body) throws UnsupportedEncodingException {
-        List<String> pairs = new ArrayList<>();
-        byte contentType = requestInfo.getContentType();
-
-        if (contentType == IRequestInfo.CONTENT_TYPE_URL_ENCODED) {
-            appendQueryPairs(pairs, body);
-
-            if (pairs.isEmpty()) {
-                appendParameterPairs(pairs, requestInfo.getParameters());
-            }
-
-            return String.join("&", pairs);
-        }
-
-        if (contentType == IRequestInfo.CONTENT_TYPE_JSON && tryAppendJsonPairs(pairs, body)) {
-            return String.join("&", pairs);
-        }
-
-        if (contentType == IRequestInfo.CONTENT_TYPE_XML && tryAppendXmlPairs(pairs, body)) {
-            return String.join("&", pairs);
-        }
-
-        if (contentType == IRequestInfo.CONTENT_TYPE_MULTIPART || contentType == IRequestInfo.CONTENT_TYPE_AMF) {
-            appendParameterPairs(pairs, requestInfo.getParameters());
-
-            if (!pairs.isEmpty()) {
-                return String.join("&", pairs);
             }
         }
 
-        if (tryAppendJsonPairs(pairs, body)) {
-            return String.join("&", pairs);
-        }
+        headers.add("Content-Type: " + contentType);
 
-        if (tryAppendXmlPairs(pairs, body)) {
-            return String.join("&", pairs);
-        }
-
-        if (looksUrlEncoded(body)) {
-            appendQueryPairs(pairs, body);
-            return String.join("&", pairs);
-        }
-
-        appendParameterPairs(pairs, requestInfo.getParameters());
-
-        if (pairs.isEmpty() && body.length() > 0) {
-            appendUrlEncodedValue(pairs, "value", body);
-        }
-
-        return String.join("&", pairs);
-    }
-
-    private static boolean tryAppendJsonPairs(List<String> pairs, String body) {
-        try {
-            Object item = new JSONTokener(body).nextValue();
-
-            if (item instanceof JSONObject) {
-                appendUrlEncodedPairs(pairs, "", (JSONObject) item);
-            } else {
-                appendUrlEncodedValue(pairs, "value", item);
-            }
-
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private static boolean tryAppendXmlPairs(List<String> pairs, String body) {
-        try {
-            JSONObject xmlJSONObject = unwrapRootObject(XML.toJSONObject(body, XMLParserConfiguration.KEEP_STRINGS));
-
-            if (xmlJSONObject.length() == 0) {
-                return false;
-            }
-
-            appendUrlEncodedPairs(pairs, "", xmlJSONObject);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private static boolean looksUrlEncoded(String body) {
-        return body.contains("=") || body.contains("&");
-    }
-
-    private static void appendQueryPairs(List<String> pairs, String body) throws UnsupportedEncodingException {
-        if (body.length() == 0) {
-            return;
-        }
-
-        List<String> bodyPairs = Arrays.asList(body.split("&", -1));
-
-        for (String pair : bodyPairs) {
-            if (pair.length() == 0) {
-                continue;
-            }
-
-            final int idx = pair.indexOf("=");
-            final String key = idx >= 0 ? URLDecoder.decode(pair.substring(0, idx), "UTF-8") : URLDecoder.decode(pair, "UTF-8");
-            final String value = idx >= 0 && pair.length() > idx + 1 ? URLDecoder.decode(pair.substring(idx + 1), "UTF-8") : "";
-            appendUrlEncodedPair(pairs, key, value);
-        }
-    }
-
-    private static void appendParameterPairs(List<String> pairs, List<IParameter> parameters) throws UnsupportedEncodingException {
-        for (IParameter parameter : parameters) {
-            if (parameter.getType() == IParameter.PARAM_COOKIE) {
-                continue;
-            }
-
-            appendUrlEncodedPair(pairs, parameter.getName(), parameter.getValue());
-        }
-    }
-
-    private static void appendUrlEncodedPairs(List<String> pairs, String prefix, JSONObject object) throws UnsupportedEncodingException {
-        Iterator<String> keys = object.keys();
-
-        while (keys.hasNext()) {
-            String key = keys.next();
-            String encodedKey = prefix.length() == 0 ? key : prefix + "[" + key + "]";
-            appendUrlEncodedValue(pairs, encodedKey, object.get(key));
-        }
-    }
-
-    private static void appendUrlEncodedValue(List<String> pairs, String key, Object value) throws UnsupportedEncodingException {
-        if (value instanceof JSONObject) {
-            appendUrlEncodedPairs(pairs, key, (JSONObject) value);
-        } else if (value instanceof JSONArray) {
-            JSONArray values = (JSONArray) value;
-
-            for (int i = 0; i < values.length(); i++) {
-                appendUrlEncodedValue(pairs, key + "[" + i + "]", values.get(i));
-            }
-        } else {
-            String stringValue = value == null || value == JSONObject.NULL ? "" : String.valueOf(value);
-            appendUrlEncodedPair(pairs, key, stringValue);
-        }
-    }
-
-    private static void appendUrlEncodedPair(List<String> pairs, String key, String value) throws UnsupportedEncodingException {
-        String safeKey = key == null ? "" : key;
-        String safeValue = value == null ? "" : value;
-        pairs.add(URLEncoder.encode(safeKey, "UTF-8") + "=" + URLEncoder.encode(safeValue, "UTF-8"));
-    }
-
-    private static Map<String,String> splitQuery(String body) throws UnsupportedEncodingException {
-        Map<String, String> query_pairs = new LinkedHashMap<>();
-        List<String> pairs = Arrays.asList(body.split("&"));
-
-        for (String pair : pairs) {
-            final int idx = pair.indexOf("=");
-            final String key = idx > 0 ? URLDecoder.decode(pair.substring(0, idx), "UTF-8") : pair;
-            if (!query_pairs.containsKey(key)) {
-                query_pairs.put(key, "");
-            }
-            final String value = idx > 0 && pair.length() > idx + 1 ? URLDecoder.decode(pair.substring(idx + 1), "UTF-8") : "";
-            query_pairs.put(key,value.trim());
-        }
-        return query_pairs;
-    }
-
-    public static String prettyPrint(Document xml) throws Exception {
-        Transformer tf = TransformerFactory.newInstance().newTransformer();
-        tf.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
-        tf.setOutputProperty(OutputKeys.INDENT, "yes");
-        Writer out = new StringWriter();
-        tf.transform(new DOMSource(xml), new StreamResult(out));
-       return(out.toString());
+        return helpers.buildHttpMessage(headers, body.getBytes(StandardCharsets.UTF_8));
     }
 }

@@ -1,171 +1,67 @@
 package burp;
 
+import burp.BodyConverter.ConversionException;
+
 import javax.swing.*;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseListener;
 import java.util.ArrayList;
 import java.util.List;
 
 public class Menu implements IContextMenuFactory {
+    private final IBurpExtenderCallbacks m_callbacks;
     private final IExtensionHelpers m_helpers;
 
-    public Menu(IExtensionHelpers helpers) {
-        m_helpers = helpers;
+    private interface Converter {
+        byte[] convert(IExtensionHelpers helpers, byte[] request) throws ConversionException;
+    }
+
+    public Menu(IBurpExtenderCallbacks callbacks) {
+        m_callbacks = callbacks;
+        m_helpers = callbacks.getHelpers();
     }
 
     public List<JMenuItem> createMenuItems(final IContextMenuInvocation invocation) {
-        List<JMenuItem> menus = new ArrayList();
+        List<JMenuItem> menus = new ArrayList<>();
 
-        if (invocation.getToolFlag() != IBurpExtenderCallbacks.TOOL_INTRUDER && invocation.getInvocationContext() != IContextMenuInvocation.CONTEXT_MESSAGE_EDITOR_REQUEST){
+        byte context = invocation.getInvocationContext();
+
+        if (context != IContextMenuInvocation.CONTEXT_MESSAGE_EDITOR_REQUEST
+                && context != IContextMenuInvocation.CONTEXT_INTRUDER_PAYLOAD_POSITIONS) {
             return menus;
         }
 
-        JMenuItem sendXMLToRepeater = new JMenuItem("Convert to XML");
-        JMenuItem sendJSONToRepeater = new JMenuItem("Convert to JSON");
-        JMenuItem sendUrlEncodedToRepeater = new JMenuItem("Convert to x-www-form-urlencoded");
-        JMenuItem sendPostToGetToRepeater = new JMenuItem("Convert POST to GET");
-        sendXMLToRepeater.addMouseListener(new MouseListener() {
+        IHttpRequestResponse[] selected = invocation.getSelectedMessages();
 
-            public void mouseClicked(MouseEvent arg0) {
+        if (selected == null || selected.length == 0) {
+            return menus;
+        }
 
-            }
+        final IHttpRequestResponse iReqResp = selected[0];
 
-
-            public void mouseEntered(MouseEvent arg0) {
-            }
-
-
-            public void mouseExited(MouseEvent arg0) {
-            }
-
-
-            public void mousePressed(MouseEvent arg0) {
-
-            }
-
-
-            public void mouseReleased(MouseEvent arg0) {
-                IHttpRequestResponse iReqResp = invocation.getSelectedMessages()[0];
-                try {
-                    byte[] request = Utilities.convertToXML(m_helpers, iReqResp);
-                    if (request != null) {
-
-                        iReqResp.setRequest(request);
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-
-        sendJSONToRepeater.addMouseListener(new MouseListener() {
-
-            public void mouseClicked(MouseEvent arg0) {
-
-            }
-
-
-            public void mouseEntered(MouseEvent arg0) {
-            }
-
-
-            public void mouseExited(MouseEvent arg0) {
-            }
-
-
-            public void mousePressed(MouseEvent arg0) {
-
-            }
-
-
-            public void mouseReleased(MouseEvent arg0) {
-                IHttpRequestResponse iReqResp = invocation.getSelectedMessages()[0];
-                try {
-                    byte[] request = Utilities.convertToJSON(m_helpers, iReqResp);
-                    if (request != null) {
-
-                        iReqResp.setRequest(request);
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-
-        sendUrlEncodedToRepeater.addMouseListener(new MouseListener() {
-
-            public void mouseClicked(MouseEvent arg0) {
-
-            }
-
-
-            public void mouseEntered(MouseEvent arg0) {
-            }
-
-
-            public void mouseExited(MouseEvent arg0) {
-            }
-
-
-            public void mousePressed(MouseEvent arg0) {
-
-            }
-
-
-            public void mouseReleased(MouseEvent arg0) {
-                IHttpRequestResponse iReqResp = invocation.getSelectedMessages()[0];
-                try {
-                    byte[] request = Utilities.convertToUrlEncoded(m_helpers, iReqResp);
-                    if (request != null) {
-
-                        iReqResp.setRequest(request);
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-
-        sendPostToGetToRepeater.addMouseListener(new MouseListener() {
-
-            public void mouseClicked(MouseEvent arg0) {
-
-            }
-
-
-            public void mouseEntered(MouseEvent arg0) {
-            }
-
-
-            public void mouseExited(MouseEvent arg0) {
-            }
-
-
-            public void mousePressed(MouseEvent arg0) {
-
-            }
-
-
-            public void mouseReleased(MouseEvent arg0) {
-                IHttpRequestResponse iReqResp = invocation.getSelectedMessages()[0];
-                try {
-                    byte[] request = Utilities.convertPostToGet(m_helpers, iReqResp);
-                    if (request != null) {
-
-                        iReqResp.setRequest(request);
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-
-
-        menus.add(sendXMLToRepeater);
-        menus.add(sendJSONToRepeater);
-        menus.add(sendUrlEncodedToRepeater);
-        menus.add(sendPostToGetToRepeater);
+        menus.add(createItem("Convert to XML", iReqResp, Utilities::convertToXML));
+        menus.add(createItem("Convert to JSON", iReqResp, Utilities::convertToJSON));
+        menus.add(createItem("Convert to x-www-form-urlencoded", iReqResp, Utilities::convertToUrlEncoded));
+        menus.add(createItem("Convert POST to GET", iReqResp, Utilities::convertPostToGet));
         return menus;
     }
 
+    private JMenuItem createItem(final String label, final IHttpRequestResponse iReqResp, final Converter converter) {
+        JMenuItem item = new JMenuItem(label);
+
+        item.addActionListener(e -> {
+            try {
+                iReqResp.setRequest(converter.convert(m_helpers, iReqResp.getRequest()));
+            } catch (ConversionException ex) {
+                reportError(label, ex.getMessage());
+            } catch (Exception ex) {
+                reportError(label, ex.toString());
+            }
+        });
+
+        return item;
+    }
+
+    private void reportError(String action, String message) {
+        m_callbacks.printError(action + " failed: " + message);
+        JOptionPane.showMessageDialog(null, message, "Content-Type Converter: " + action, JOptionPane.WARNING_MESSAGE);
+    }
 }
